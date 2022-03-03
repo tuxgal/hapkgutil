@@ -53,6 +53,10 @@ func run() int {
 		log.Errorf("-ha-version cannot be empty")
 		return -1
 	}
+	if *enabledComponentsFile == "" {
+		log.Errorf("-enabled-components cannot be empty")
+		return -1
+	}
 	if *outputReqsFile == "" {
 		log.Errorf("-output-requirements cannot be empty")
 		return -1
@@ -86,13 +90,21 @@ func run() int {
 	log.Debugf("Integ Reqs: %v", integs)
 	log.Infof("Unique components in Integrations: %d", len(integs))
 
+	enabledCmps, err := parseComponentsFile(*enabledComponentsFile)
+	if err != nil {
+		log.Errorf("Parsing enabled components failed, reason: %v", err)
+		return -1
+	}
+	log.Infof("Enabled components: %v", enabledCmps)
+	log.Infof("Unique enabled components: %d", len(enabledCmps))
+
 	err = writeConstraintsFile(constraints)
 	if err != nil {
 		log.Errorf("Failed to output constraints, reason: %v", err)
 		return -1
 	}
 
-	err = writeReqsFile(reqs, integs)
+	err = writeReqsFile(reqs, integs, enabledCmps)
 	if err != nil {
 		log.Errorf("Failed to output requirements, reason: %v", err)
 		return -1
@@ -202,14 +214,43 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 	return integs, nil
 }
 
-func writeReqsFile(reqs dependencies, integs integrations) error {
-	f, err := os.OpenFile(*outputReqsFile, os.O_RDWR|os.O_CREATE, 0644)
+func parseComponentsFile(file string) (components, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return parseComponents(f)
+}
+
+func parseComponents(reader io.Reader) (components, error) {
+	s := bufio.NewScanner(reader)
+
+	cmps := make(components)
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line != "" && !strings.HasPrefix(line, "# ") {
+			cmps[line] = true
+		}
+	}
+
+	err := s.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return cmps, nil
+}
+
+func writeReqsFile(reqs dependencies, integs integrations, enabledCmps components) error {
+	f, err := os.OpenFile(*outputReqsFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create output requirements file %q", *outputReqsFile)
 	}
 	defer f.Close()
 
-	return outputReqs(f, reqs, integs)
+	return outputReqs(f, reqs, integs, enabledCmps)
 }
 
 func writeConstraintsFile(constraints dependencies) error {
@@ -222,11 +263,13 @@ func writeConstraintsFile(constraints dependencies) error {
 	return outputConstraints(f, constraints)
 }
 
-func outputReqs(writer io.Writer, reqs dependencies, integs integrations) error {
+func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledCmps components) error {
 	haDep := fmt.Sprintf("homeassistant==%s", *haVersion)
 	deps := append(reqs, haDep)
-	for _, d := range integs {
-		deps = append(deps, d...)
+	for c, d := range integs {
+		if enabledCmps[c] {
+			deps = append(deps, d...)
+		}
 	}
 	sort.Strings(deps)
 
