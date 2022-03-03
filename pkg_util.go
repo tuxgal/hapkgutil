@@ -53,6 +53,14 @@ func run() int {
 		log.Errorf("-ha-version cannot be empty")
 		return -1
 	}
+	if *outputReqsFile == "" {
+		log.Errorf("-output-requirements cannot be empty")
+		return -1
+	}
+	if *outputConstraintsFile == "" {
+		log.Errorf("-output-constraints cannot be empty")
+		return -1
+	}
 
 	constraints, err := parseConstraintsOrReqsFile(*coreConstraintsFile, false)
 	if err != nil {
@@ -77,6 +85,18 @@ func run() int {
 	}
 	log.Debugf("Integ Reqs: %v", integs)
 	log.Infof("Unique components in Integrations: %d", len(integs))
+
+	err = writeConstraintsFile(constraints)
+	if err != nil {
+		log.Errorf("Failed to output constraints, reason: %v", err)
+		return -1
+	}
+
+	err = writeReqsFile(reqs, integs)
+	if err != nil {
+		log.Errorf("Failed to output requirements, reason: %v", err)
+		return -1
+	}
 
 	return 0
 }
@@ -180,6 +200,76 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 	}
 
 	return integs, nil
+}
+
+func writeReqsFile(reqs dependencies, integs integrations) error {
+	f, err := os.OpenFile(*outputReqsFile, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create output requirements file %q", *outputReqsFile)
+	}
+	defer f.Close()
+
+	return outputReqs(f, reqs, integs)
+}
+
+func writeConstraintsFile(constraints dependencies) error {
+	f, err := os.OpenFile(*outputConstraintsFile, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create output constraints file %q", *outputReqsFile)
+	}
+	defer f.Close()
+
+	return outputConstraints(f, constraints)
+}
+
+func outputReqs(writer io.Writer, reqs dependencies, integs integrations) error {
+	haDep := fmt.Sprintf("homeassistant==%s", *haVersion)
+	deps := append(reqs, haDep)
+	for _, d := range integs {
+		deps = append(deps, d...)
+	}
+	sort.Strings(deps)
+
+	count, err := outputDeps(writer, deps)
+	if err != nil {
+		return err
+	}
+	log.Infof("Output Requirements, wrote %d bytes", count)
+	return nil
+}
+
+func outputConstraints(writer io.Writer, constraints dependencies) error {
+	haDep := fmt.Sprintf("homeassistant==%s", *haVersion)
+	deps := append(constraints, haDep)
+	sort.Strings(deps)
+
+	count, err := outputDeps(writer, constraints)
+	if err != nil {
+		return err
+	}
+
+	log.Infof("Output Constraints, wrote %d bytes", count)
+	return nil
+}
+
+func outputDeps(writer io.Writer, deps dependencies) (int, error) {
+	count := 0
+	w := bufio.NewWriter(writer)
+	defer w.Flush()
+
+	for _, dep := range deps {
+		n, err := w.WriteString(dep)
+		if err != nil {
+			return 0, fmt.Errorf("failed to write dependency to file, reason: %v", err)
+		}
+		count += n
+		n, err = w.WriteString("\n")
+		if err != nil {
+			return 0, fmt.Errorf("failed to write dependency to file, reason: %v", err)
+		}
+		count += n
+	}
+	return count, nil
 }
 
 func main() {
