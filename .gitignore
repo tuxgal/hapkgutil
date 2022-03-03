@@ -1,0 +1,4 @@
+.makesystem
+coverage.out
+dist/
+hasspkgutil
