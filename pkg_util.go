@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -63,8 +64,11 @@ func parseCoreReqsFile() error {
 		log.Fatal(err)
 	}
 	defer f.Close()
+	return parseCoreReqs(f)
+}
 
-	s := bufio.NewScanner(f)
+func parseCoreReqs(file io.Reader) error {
+	s := bufio.NewScanner(file)
 	if !s.Scan() {
 		return s.Err()
 	}
