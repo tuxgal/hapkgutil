@@ -49,28 +49,35 @@ func run() int {
 		return -1
 	}
 
-	deps, err := parseCoreReqsFile()
+	constraints, err := parseConstraintsOrReqsFile(*coreConstraintsFile, false)
+	if err != nil {
+		log.Errorf("Parsing core constraints failed, reason: %v", err)
+		return -1
+	}
+	log.Infof("Core Reqs: %v", constraints)
+
+	reqs, err := parseConstraintsOrReqsFile(*coreReqsFile, true)
 	if err != nil {
 		log.Errorf("Parsing core requirements failed, reason: %v", err)
 		return -1
 	}
-	log.Infof("Core Reqs: %v", deps)
+	log.Infof("Core Reqs: %v", reqs)
 
 	return 0
 }
 
-func parseCoreReqsFile() (dependencies, error) {
-	f, err := os.Open(*coreReqsFile)
+func parseConstraintsOrReqsFile(file string, firstLineWithConstraint bool) (dependencies, error) {
+	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	return parseCoreReqs(f)
+	return parseConstraintsOrReqs(f, firstLineWithConstraint)
 }
 
-func parseCoreReqs(file io.Reader) (dependencies, error) {
-	return parseReqsOrConstraints(file, true)
+func parseConstraintsOrReqs(file io.Reader, firstLineWithConstraint bool) (dependencies, error) {
+	return parseReqsOrConstraints(file, firstLineWithConstraint)
 }
 
 func parseReqsOrConstraints(file io.Reader, firstLineWithConstraint bool) (dependencies, error) {
