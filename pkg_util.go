@@ -184,13 +184,10 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 				// Home Assistant Component.
 				c := strings.TrimPrefix(line, componentLinePrefix)
 				cmps = append(cmps, c)
-			} else if strings.HasPrefix(line, "# ") {
-				// Commented out dependency.
-				// TODO: Make a stronger check here.
-				log.Debugf("Ignoring possibly commented dependency %q", line)
-				cmps = nil
 			} else {
-				// Dependency.
+				// Handle commented out dependency.
+				line = strings.TrimPrefix(line, "# ")
+				// Add the dependency against all the components.
 				for _, c := range cmps {
 					integs[c] = append(integs[c], line)
 				}
