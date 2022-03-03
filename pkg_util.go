@@ -24,8 +24,6 @@ func buildLogger() zzzlogi.Logger {
 }
 
 func run() int {
-	log.Infof("Running ...")
-
 	if *coreReqsFile == "" {
 		log.Errorf("-ha-core-requirements cannot be empty")
 		return -1
