@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/tuxdude/zzzlog"
@@ -108,6 +109,8 @@ func parseConstraintsOrReqs(reader io.Reader, firstLineWithConstraint bool) (dep
 	if err != nil {
 		return nil, err
 	}
+
+	sort.Strings(deps)
 	return deps, nil
 }
 
@@ -168,6 +171,11 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	for _, deps := range integs {
+		sort.Strings(deps)
+	}
+
 	return integs, nil
 }
 
