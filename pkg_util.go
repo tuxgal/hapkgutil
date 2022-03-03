@@ -19,7 +19,7 @@ var (
 
 func buildLogger() zzzlogi.Logger {
 	config := zzzlog.NewConsoleLoggerConfig()
-	config.MaxLevel = zzzlog.LvlWarn
+	config.MaxLevel = zzzlog.LvlInfo
 	return zzzlog.NewLogger(config)
 }
 
