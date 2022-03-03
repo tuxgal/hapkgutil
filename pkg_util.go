@@ -6,11 +6,18 @@
 package main
 
 import (
+	"bufio"
 	"flag"
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/tuxdude/zzzlog"
 	"github.com/tuxdude/zzzlogi"
+)
+
+const (
+	pkgConstraintInclude = "-c homeassistant/package_constraints.txt"
 )
 
 var (
@@ -41,7 +48,37 @@ func run() int {
 		return -1
 	}
 
+	err := parseCoreReqsFile()
+	if err != nil {
+		log.Errorf("Parsing core requirements failed, reason: %v", err)
+		return -1
+	}
+
 	return 0
+}
+
+func parseCoreReqsFile() error {
+	f, err := os.Open(*coreReqsFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	s := bufio.NewScanner(f)
+	if !s.Scan() {
+		return s.Err()
+	}
+	if s.Text() != pkgConstraintInclude {
+		return fmt.Errorf("First line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
+	}
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line != "" && !strings.HasPrefix(line, "#") {
+			log.Infof(line)
+		}
+	}
+
+	return s.Err()
 }
 
 func main() {
