@@ -70,11 +70,15 @@ func parseCoreReqsFile() (dependencies, error) {
 }
 
 func parseCoreReqs(file io.Reader) (dependencies, error) {
+	return parseReqsOrConstraints(file, true)
+}
+
+func parseReqsOrConstraints(file io.Reader, firstLineWithConstraint bool) (dependencies, error) {
 	s := bufio.NewScanner(file)
 	if !s.Scan() {
 		return nil, s.Err()
 	}
-	if s.Text() != pkgConstraintInclude {
+	if firstLineWithConstraint && s.Text() != pkgConstraintInclude {
 		return nil, fmt.Errorf("First line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
 	}
 
