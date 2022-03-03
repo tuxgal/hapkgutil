@@ -59,21 +59,24 @@ func run() int {
 		log.Errorf("Parsing core constraints failed, reason: %v", err)
 		return -1
 	}
-	log.Infof("Core Constraints: %v", constraints)
+	log.Debugf("Core Constraints: %v", constraints)
+	log.Infof("Unique Core Constraints: %d", len(constraints))
 
 	reqs, err := parseConstraintsOrReqsFile(*coreReqsFile, true)
 	if err != nil {
 		log.Errorf("Parsing core requirements failed, reason: %v", err)
 		return -1
 	}
-	log.Infof("Core Reqs: %v", reqs)
+	log.Debugf("Core Reqs: %v", reqs)
+	log.Infof("Unique Core Requirements: %d", len(reqs))
 
 	integs, err := parseIntegrationsFile(*integsReqsFile)
 	if err != nil {
 		log.Errorf("Parsing integrations requirements failed, reason: %v", err)
 		return -1
 	}
-	log.Infof("Integ Reqs: %v", integs)
+	log.Debugf("Integ Reqs: %v", integs)
+	log.Infof("Unique components in Integrations: %d", len(integs))
 
 	return 0
 }
@@ -152,7 +155,7 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 			} else if strings.HasPrefix(line, "# ") {
 				// Commented out dependency.
 				// TODO: Make a stronger check here.
-				log.Infof("Ignoring possibly commented dependency %q", line)
+				log.Debugf("Ignoring possibly commented dependency %q", line)
 				cmps = nil
 			} else {
 				// Dependency.
