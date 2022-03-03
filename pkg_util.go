@@ -19,6 +19,10 @@ import (
 
 const (
 	pkgConstraintInclude = "-c homeassistant/package_constraints.txt"
+	integsHeader         = "# Home Assistant Core, full dependency set"
+	integsReqsInclude    = "-r requirements.txt"
+	componentPrefix      = "homeassistant.components"
+	componentLinePrefix  = "# " + componentPrefix + "."
 )
 
 var (
@@ -40,7 +44,7 @@ func run() int {
 		log.Errorf("-ha-core-constraints cannot be empty")
 		return -1
 	}
-	if *integrationsReqsFile == "" {
+	if *integsReqsFile == "" {
 		log.Errorf("-ha-integrations cannot be empty")
 		return -1
 	}
@@ -54,7 +58,7 @@ func run() int {
 		log.Errorf("Parsing core constraints failed, reason: %v", err)
 		return -1
 	}
-	log.Infof("Core Reqs: %v", constraints)
+	log.Infof("Core Constraints: %v", constraints)
 
 	reqs, err := parseConstraintsOrReqsFile(*coreReqsFile, true)
 	if err != nil {
@@ -62,6 +66,13 @@ func run() int {
 		return -1
 	}
 	log.Infof("Core Reqs: %v", reqs)
+
+	integs, err := parseIntegrationsFile(*integsReqsFile)
+	if err != nil {
+		log.Errorf("Parsing integrations requirements failed, reason: %v", err)
+		return -1
+	}
+	log.Infof("Integ Reqs: %v", integs)
 
 	return 0
 }
@@ -76,12 +87,8 @@ func parseConstraintsOrReqsFile(file string, firstLineWithConstraint bool) (depe
 	return parseConstraintsOrReqs(f, firstLineWithConstraint)
 }
 
-func parseConstraintsOrReqs(file io.Reader, firstLineWithConstraint bool) (dependencies, error) {
-	return parseReqsOrConstraints(file, firstLineWithConstraint)
-}
-
-func parseReqsOrConstraints(file io.Reader, firstLineWithConstraint bool) (dependencies, error) {
-	s := bufio.NewScanner(file)
+func parseConstraintsOrReqs(reader io.Reader, firstLineWithConstraint bool) (dependencies, error) {
+	s := bufio.NewScanner(reader)
 	if !s.Scan() {
 		return nil, s.Err()
 	}
@@ -102,6 +109,66 @@ func parseReqsOrConstraints(file io.Reader, firstLineWithConstraint bool) (depen
 		return nil, err
 	}
 	return deps, nil
+}
+
+func parseIntegrationsFile(file string) (integrations, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	return parseIntegrations(f)
+}
+
+func parseIntegrations(reader io.Reader) (integrations, error) {
+	s := bufio.NewScanner(reader)
+	if !s.Scan() {
+		return nil, s.Err()
+	}
+	if s.Text() != integsHeader {
+		return nil, fmt.Errorf("First line must contain %q, found %q instead", integsHeader, s.Text())
+	}
+
+	if !s.Scan() {
+		return nil, s.Err()
+	}
+	if s.Text() != integsReqsInclude {
+		return nil, fmt.Errorf("Second line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
+	}
+
+	var cmps []string
+	integs := make(integrations)
+	for s.Scan() {
+		line := strings.TrimSpace(s.Text())
+		if line != "" {
+			if strings.HasPrefix(line, componentLinePrefix) {
+				// Home Assistant Component.
+				c := strings.TrimPrefix(line, componentLinePrefix)
+				cmps = append(cmps, c)
+			} else if strings.HasPrefix(line, "# ") {
+				// Commented out dependency.
+				// TODO: Make a stronger check here.
+				log.Infof("Ignoring possibly commented dependency %q", line)
+				cmps = nil
+			} else {
+				// Dependency.
+				for _, c := range cmps {
+					integs[c] = append(integs[c], line)
+				}
+				cmps = nil
+			}
+		} else if cmps != nil {
+			// Empty line.
+			log.Fatalf("Assertion failed - cmps expected to be nil when we see an empty line, but instead contains: %v", cmps)
+		}
+	}
+
+	err := s.Err()
+	if err != nil {
+		return nil, err
+	}
+	return integs, nil
 }
 
 func main() {
