@@ -49,40 +49,48 @@ func run() int {
 		return -1
 	}
 
-	err := parseCoreReqsFile()
+	deps, err := parseCoreReqsFile()
 	if err != nil {
 		log.Errorf("Parsing core requirements failed, reason: %v", err)
 		return -1
 	}
+	log.Infof("Core Reqs: %v", deps)
 
 	return 0
 }
 
-func parseCoreReqsFile() error {
+func parseCoreReqsFile() (dependencies, error) {
 	f, err := os.Open(*coreReqsFile)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	defer f.Close()
+
 	return parseCoreReqs(f)
 }
 
-func parseCoreReqs(file io.Reader) error {
+func parseCoreReqs(file io.Reader) (dependencies, error) {
 	s := bufio.NewScanner(file)
 	if !s.Scan() {
-		return s.Err()
+		return nil, s.Err()
 	}
 	if s.Text() != pkgConstraintInclude {
-		return fmt.Errorf("First line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
+		return nil, fmt.Errorf("First line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
 	}
+
+	var deps dependencies
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
 		if line != "" && !strings.HasPrefix(line, "#") {
-			log.Infof(line)
+			deps = append(deps, line)
 		}
 	}
 
-	return s.Err()
+	err := s.Err()
+	if err != nil {
+		return nil, err
+	}
+	return deps, nil
 }
 
 func main() {
