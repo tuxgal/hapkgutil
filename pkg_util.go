@@ -10,20 +10,25 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/tuxdude/zzzlog"
 	"github.com/tuxdude/zzzlogi"
 )
 
 const (
-	pkgConstraintInclude = "-c homeassistant/package_constraints.txt"
-	integsHeader         = "# Home Assistant Core, full dependency set"
-	integsReqsInclude    = "-r requirements.txt"
-	componentPrefix      = "homeassistant.components"
-	componentLinePrefix  = "# " + componentPrefix + "."
+	pkgConstraintInclude  = "-c homeassistant/package_constraints.txt"
+	integsHeader          = "# Home Assistant Core, full dependency set"
+	integsReqsInclude     = "-r requirements.txt"
+	componentPrefix       = "homeassistant.components"
+	componentLinePrefix   = "# " + componentPrefix + "."
+	coreConstraintsURLFmt = "http://raw.githubusercontent.com/home-assistant/core/%s/homeassistant/package_constraints.txt"
+	coreReqsURLFmt        = "http://raw.githubusercontent.com/home-assistant/core/%s/requirements.txt"
+	integsURLFmt          = "http://raw.githubusercontent.com/home-assistant/core/%s/requirements_all.txt"
 )
 
 var (
@@ -37,18 +42,6 @@ func buildLogger() zzzlogi.Logger {
 }
 
 func run() int {
-	if *coreReqsFile == "" {
-		log.Errorf("-ha-core-requirements cannot be empty")
-		return -1
-	}
-	if *coreConstraintsFile == "" {
-		log.Errorf("-ha-core-constraints cannot be empty")
-		return -1
-	}
-	if *integsReqsFile == "" {
-		log.Errorf("-ha-integrations cannot be empty")
-		return -1
-	}
 	if *haVersion == "" {
 		log.Errorf("-ha-version cannot be empty")
 		return -1
@@ -66,7 +59,11 @@ func run() int {
 		return -1
 	}
 
-	constraints, err := parseConstraintsOrReqsFile(*coreConstraintsFile, false)
+	coreConstraintsURL := fmt.Sprintf(coreConstraintsURLFmt, *haVersion)
+	coreReqsURL := fmt.Sprintf(coreReqsURLFmt, *haVersion)
+	integsURL := fmt.Sprintf(integsURLFmt, *haVersion)
+
+	constraints, err := parseConstraintsOrReqsFile(coreConstraintsURL, false)
 	if err != nil {
 		log.Errorf("Parsing core constraints failed, reason: %v", err)
 		return -1
@@ -74,7 +71,7 @@ func run() int {
 	log.Debugf("Core Constraints: %v", constraints)
 	log.Infof("Unique Core Constraints: %d", len(constraints))
 
-	reqs, err := parseConstraintsOrReqsFile(*coreReqsFile, true)
+	reqs, err := parseConstraintsOrReqsFile(coreReqsURL, true)
 	if err != nil {
 		log.Errorf("Parsing core requirements failed, reason: %v", err)
 		return -1
@@ -82,7 +79,7 @@ func run() int {
 	log.Debugf("Core Reqs: %v", reqs)
 	log.Infof("Unique Core Requirements: %d", len(reqs))
 
-	integs, err := parseIntegrationsFile(*integsReqsFile)
+	integs, err := parseIntegrationsFile(integsURL)
 	if err != nil {
 		log.Errorf("Parsing integrations requirements failed, reason: %v", err)
 		return -1
@@ -113,14 +110,13 @@ func run() int {
 	return 0
 }
 
-func parseConstraintsOrReqsFile(file string, firstLineWithConstraint bool) (dependencies, error) {
-	f, err := os.Open(file)
+func parseConstraintsOrReqsFile(url string, firstLineWithConstraint bool) (dependencies, error) {
+	f, err := downloadFile(url)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
-	return parseConstraintsOrReqs(f, firstLineWithConstraint)
+	return parseConstraintsOrReqs(strings.NewReader(f), firstLineWithConstraint)
 }
 
 func parseConstraintsOrReqs(reader io.Reader, firstLineWithConstraint bool) (dependencies, error) {
@@ -149,14 +145,13 @@ func parseConstraintsOrReqs(reader io.Reader, firstLineWithConstraint bool) (dep
 	return deps, nil
 }
 
-func parseIntegrationsFile(file string) (integrations, error) {
-	f, err := os.Open(file)
+func parseIntegrationsFile(url string) (integrations, error) {
+	f, err := downloadFile(url)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
-	return parseIntegrations(f)
+	return parseIntegrations(strings.NewReader(f))
 }
 
 func parseIntegrations(reader io.Reader) (integrations, error) {
@@ -209,6 +204,29 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 	}
 
 	return integs, nil
+}
+
+func downloadFile(url string) (string, error) {
+	c := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := c.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to download from URL: %q, reason: %v", url, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read the body while downloading from URL: %q, reason: %v", url, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed while downloading from URL: %q, status code: %d, body: %s", url, resp.StatusCode, string(body))
+	}
+
+	return string(body), nil
 }
 
 func parseComponentsFile(file string) (components, error) {
