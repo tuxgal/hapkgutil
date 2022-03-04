@@ -95,7 +95,7 @@ func run() int {
 		log.Errorf("Parsing enabled components failed, reason: %v", err)
 		return -1
 	}
-	log.Infof("Enabled components: %v", enabledCmps)
+	log.Debugf("Enabled components: %v", enabledCmps)
 	log.Infof("Unique enabled components: %d", len(enabledCmps))
 
 	err = writeConstraintsFile(constraints)
