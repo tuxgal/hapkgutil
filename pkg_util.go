@@ -284,14 +284,24 @@ func writeConstraintsFile(constraints dependencies) error {
 }
 
 func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledIntegs enabledIntegrations) error {
+	notFoundIntegs := make(enabledIntegrations)
+	for c := range enabledIntegs {
+		notFoundIntegs[c] = true
+	}
+
 	haDep := fmt.Sprintf("homeassistant==%s", *haVersion)
 	deps := append(reqs, haDep)
 	for c, d := range integs {
 		if enabledIntegs[c] {
 			deps = append(deps, d...)
+			delete(notFoundIntegs, c)
 		}
 	}
 	sort.Strings(deps)
+
+	if len(notFoundIntegs) != 0 {
+		return fmt.Errorf("Cannot find the following integrations that were requested to be enabled: %v", notFoundIntegs.names())
+	}
 
 	count, err := outputDeps(writer, deps)
 	if err != nil {
