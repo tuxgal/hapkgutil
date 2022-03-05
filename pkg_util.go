@@ -24,8 +24,8 @@ const (
 	pkgConstraintInclude  = "-c homeassistant/package_constraints.txt"
 	integsHeader          = "# Home Assistant Core, full dependency set"
 	integsReqsInclude     = "-r requirements.txt"
-	componentPrefix       = "homeassistant.components"
-	componentLinePrefix   = "# " + componentPrefix + "."
+	componentPrefix       = "components."
+	integPrefix           = "# homeassistant."
 	coreConstraintsURLFmt = "http://raw.githubusercontent.com/home-assistant/core/%s/homeassistant/package_constraints.txt"
 	coreReqsURLFmt        = "http://raw.githubusercontent.com/home-assistant/core/%s/requirements.txt"
 	integsURLFmt          = "http://raw.githubusercontent.com/home-assistant/core/%s/requirements_all.txt"
@@ -46,8 +46,8 @@ func run() int {
 		log.Errorf("-ha-version cannot be empty")
 		return -1
 	}
-	if *enabledComponentsFile == "" {
-		log.Errorf("-enabled-components cannot be empty")
+	if *enabledIntegsFile == "" {
+		log.Errorf("-enabled-integrations cannot be empty")
 		return -1
 	}
 	if *outputReqsFile == "" {
@@ -85,15 +85,15 @@ func run() int {
 		return -1
 	}
 	log.Debugf("Integ Reqs: %v", integs)
-	log.Infof("Unique components in Integrations: %d", len(integs))
+	log.Infof("Unique Integrations: %d", len(integs))
 
-	enabledCmps, err := parseComponentsFile(*enabledComponentsFile)
+	enabledIntegs, err := parseEnabledIntegrationsFile(*enabledIntegsFile)
 	if err != nil {
-		log.Errorf("Parsing enabled components failed, reason: %v", err)
+		log.Errorf("Parsing enabled integrations failed, reason: %v", err)
 		return -1
 	}
-	log.Debugf("Enabled components: %v", enabledCmps)
-	log.Infof("Unique enabled components: %d", len(enabledCmps))
+	log.Debugf("Enabled integrations: %v", enabledIntegs)
+	log.Infof("Unique enabled integrations: %d", len(enabledIntegs))
 
 	err = writeConstraintsFile(constraints)
 	if err != nil {
@@ -101,7 +101,7 @@ func run() int {
 		return -1
 	}
 
-	err = writeReqsFile(reqs, integs, enabledCmps)
+	err = writeReqsFile(reqs, integs, enabledIntegs)
 	if err != nil {
 		log.Errorf("Failed to output requirements, reason: %v", err)
 		return -1
@@ -170,27 +170,28 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 		return nil, fmt.Errorf("Second line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
 	}
 
-	var cmps []string
+	var integNames []string
 	integs := make(integrations)
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
 		if line != "" {
-			if strings.HasPrefix(line, componentLinePrefix) {
-				// Home Assistant Component.
-				c := strings.TrimPrefix(line, componentLinePrefix)
-				cmps = append(cmps, c)
+			if strings.HasPrefix(line, integPrefix) {
+				// Home Assistant Integration.
+				c := strings.TrimPrefix(line, integPrefix)
+				integNames = append(integNames, c)
 			} else {
 				// Handle commented out dependency.
 				line = strings.TrimPrefix(line, "# ")
-				// Add the dependency against all the components.
-				for _, c := range cmps {
+				// Add the dependency against all integrations we read
+				// earlier since the previous dependency.
+				for _, c := range integNames {
 					integs[c] = append(integs[c], line)
 				}
-				cmps = nil
+				integNames = nil
 			}
-		} else if cmps != nil {
+		} else if integNames != nil {
 			// Empty line.
-			log.Fatalf("Assertion failed - cmps expected to be nil when we see an empty line, but instead contains: %v", cmps)
+			log.Fatalf("Assertion failed - integration names expected to be nil when we see an empty line, but instead contains: %v", integNames)
 		}
 	}
 
@@ -229,24 +230,28 @@ func downloadFile(url string) (string, error) {
 	return string(body), nil
 }
 
-func parseComponentsFile(file string) (components, error) {
+func parseEnabledIntegrationsFile(file string) (enabledIntegrations, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	return parseComponents(f)
+	return parseEnabledIntegrations(f)
 }
 
-func parseComponents(reader io.Reader) (components, error) {
+func parseEnabledIntegrations(reader io.Reader) (enabledIntegrations, error) {
 	s := bufio.NewScanner(reader)
 
-	cmps := make(components)
+	integs := make(enabledIntegrations)
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
 		if line != "" && !strings.HasPrefix(line, "# ") {
-			cmps[line] = true
+			if strings.Contains(line, ".") {
+				integs[line] = true
+			} else {
+				integs[componentPrefix+line] = true
+			}
 		}
 	}
 
@@ -255,17 +260,17 @@ func parseComponents(reader io.Reader) (components, error) {
 		return nil, err
 	}
 
-	return cmps, nil
+	return integs, nil
 }
 
-func writeReqsFile(reqs dependencies, integs integrations, enabledCmps components) error {
+func writeReqsFile(reqs dependencies, integs integrations, enabledIntegs enabledIntegrations) error {
 	f, err := os.OpenFile(*outputReqsFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create output requirements file %q", *outputReqsFile)
 	}
 	defer f.Close()
 
-	return outputReqs(f, reqs, integs, enabledCmps)
+	return outputReqs(f, reqs, integs, enabledIntegs)
 }
 
 func writeConstraintsFile(constraints dependencies) error {
@@ -278,11 +283,11 @@ func writeConstraintsFile(constraints dependencies) error {
 	return outputConstraints(f, constraints)
 }
 
-func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledCmps components) error {
+func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledIntegs enabledIntegrations) error {
 	haDep := fmt.Sprintf("homeassistant==%s", *haVersion)
 	deps := append(reqs, haDep)
 	for c, d := range integs {
-		if enabledCmps[c] {
+		if enabledIntegs[c] {
 			deps = append(deps, d...)
 		}
 	}
