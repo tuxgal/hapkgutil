@@ -105,12 +105,11 @@ func run() int {
 		}
 		log.Debugf("Disabled integrations: %v", disabledIntegs)
 		log.Infof("Unique disabled integrations: %d", len(disabledIntegs))
-
-		err = validateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
-		if err != nil {
-			log.Errorf("Enabled/Disabled integrations validation failed, reason: %v", err)
-			return -1
-		}
+	}
+	err = validateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
+	if err != nil {
+		log.Errorf("Enabled/Disabled integrations validation failed, reason: %v", err)
+		return -1
 	}
 
 	err = writeConstraintsFile(constraints)
@@ -226,6 +225,21 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 }
 
 func validateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrations, disabledIntegs selectedIntegrations) error {
+	var invalidEnabledIntegs []string
+	for e := range enabledIntegs {
+		if _, ok := integs[e]; !ok {
+			invalidEnabledIntegs = append(invalidEnabledIntegs, e)
+		}
+	}
+	if len(invalidEnabledIntegs) > 0 {
+		sort.Strings(invalidEnabledIntegs)
+		return fmt.Errorf("cannot find the specified enabled integrations %v in the full list of integrations", invalidEnabledIntegs)
+	}
+
+	if len(disabledIntegs) == 0 {
+		return nil
+	}
+
 	var invalidDisabledIntegs []string
 	var commonIntegs []string
 	fullSel := make(selectedIntegrations)
@@ -349,24 +363,14 @@ func writeConstraintsFile(constraints dependencies) error {
 }
 
 func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledIntegs selectedIntegrations) error {
-	notFoundIntegs := make(selectedIntegrations)
-	for c := range enabledIntegs {
-		notFoundIntegs[c] = true
-	}
-
 	haDep := fmt.Sprintf("homeassistant==%s", *haVersion)
 	deps := append(reqs, haDep)
 	for c, d := range integs {
 		if enabledIntegs[c] {
 			deps = append(deps, d...)
-			delete(notFoundIntegs, c)
 		}
 	}
 	sort.Strings(deps)
-
-	if len(notFoundIntegs) != 0 {
-		return fmt.Errorf("Cannot find the following integrations that were requested to be enabled: %v", notFoundIntegs.names())
-	}
 
 	count, err := outputDeps(writer, deps)
 	if err != nil {
