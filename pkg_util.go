@@ -226,6 +226,7 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 }
 
 func validateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrations, disabledIntegs selectedIntegrations) error {
+	var invalidDisabledIntegs []string
 	var commonIntegs []string
 	fullSel := make(selectedIntegrations)
 	for e := range enabledIntegs {
@@ -235,6 +236,9 @@ func validateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrati
 		if fullSel[d] {
 			commonIntegs = append(commonIntegs, d)
 		}
+		if _, ok := integs[d]; !ok {
+			invalidDisabledIntegs = append(invalidDisabledIntegs, d)
+		}
 		fullSel[d] = true
 	}
 
@@ -243,6 +247,12 @@ func validateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrati
 		if !fullSel[i] {
 			notFoundInSel = append(notFoundInSel, i)
 		}
+	}
+
+	// Verify every specified disabled integration is valid.
+	if len(invalidDisabledIntegs) > 0 {
+		sort.Strings(invalidDisabledIntegs)
+		return fmt.Errorf("cannot find the specified disabled integrations %v in the full list of integrations", invalidDisabledIntegs)
 	}
 
 	// Verify there is no overlap between enabled and disabled integrations lists.
