@@ -95,6 +95,24 @@ func run() int {
 	log.Debugf("Enabled integrations: %v", enabledIntegs)
 	log.Infof("Unique enabled integrations: %d", len(enabledIntegs))
 
+	var disabledIntegs selectedIntegrations
+	if *disabledIntegsFile != "" {
+		var err error
+		disabledIntegs, err = parseSelectedIntegsFile(*disabledIntegsFile)
+		if err != nil {
+			log.Errorf("Parsing disabled integrations failed, reason: %v", err)
+			return -1
+		}
+		log.Debugf("Disabled integrations: %v", disabledIntegs)
+		log.Infof("Unique disabled integrations: %d", len(disabledIntegs))
+
+		err = validateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
+		if err != nil {
+			log.Errorf("Enabled/Disabled integrations validation failed, reason: %v", err)
+			return -1
+		}
+	}
+
 	err = writeConstraintsFile(constraints)
 	if err != nil {
 		log.Errorf("Failed to output constraints, reason: %v", err)
@@ -205,6 +223,43 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 	}
 
 	return integs, nil
+}
+
+func validateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrations, disabledIntegs selectedIntegrations) error {
+	var commonIntegs []string
+	fullSel := make(selectedIntegrations)
+	for e := range enabledIntegs {
+		fullSel[e] = true
+	}
+	for d := range disabledIntegs {
+		if fullSel[d] {
+			commonIntegs = append(commonIntegs, d)
+		}
+		fullSel[d] = true
+	}
+
+	var notFoundInSel []string
+	for i := range integs {
+		if !fullSel[i] {
+			notFoundInSel = append(notFoundInSel, i)
+		}
+	}
+
+	// Verify there is no overlap between enabled and disabled integrations lists.
+	if len(commonIntegs) > 0 {
+		sort.Strings(commonIntegs)
+		return fmt.Errorf("integrations %v are specified in both enabled and disabled integrations lists", commonIntegs)
+	}
+
+	// Verify that the union of enabled and disabled integrations lists is the
+	// same as the full integrations list we built from the Home Assistant
+	// release requirements file.
+	if len(notFoundInSel) > 0 {
+		sort.Strings(notFoundInSel)
+		return fmt.Errorf("integrations %v found in the full integrations list are not part of either enabled or disabled integrations lists specified", notFoundInSel)
+	}
+
+	return nil
 }
 
 func downloadFile(url string) (string, error) {
