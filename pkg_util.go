@@ -87,7 +87,7 @@ func run() int {
 	log.Debugf("Integ Reqs: %v", integs)
 	log.Infof("Unique Integrations: %d", len(integs))
 
-	enabledIntegs, err := parseEnabledIntegrationsFile(*enabledIntegsFile)
+	enabledIntegs, err := parseSelectedIntegsFile(*enabledIntegsFile)
 	if err != nil {
 		log.Errorf("Parsing enabled integrations failed, reason: %v", err)
 		return -1
@@ -230,20 +230,20 @@ func downloadFile(url string) (string, error) {
 	return string(body), nil
 }
 
-func parseEnabledIntegrationsFile(file string) (enabledIntegrations, error) {
+func parseSelectedIntegsFile(file string) (selectedIntegrations, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	return parseEnabledIntegrations(f)
+	return parseSelectedIntegs(f)
 }
 
-func parseEnabledIntegrations(reader io.Reader) (enabledIntegrations, error) {
+func parseSelectedIntegs(reader io.Reader) (selectedIntegrations, error) {
 	s := bufio.NewScanner(reader)
 
-	integs := make(enabledIntegrations)
+	integs := make(selectedIntegrations)
 	for s.Scan() {
 		line := strings.TrimSpace(s.Text())
 		if line != "" && !strings.HasPrefix(line, "# ") {
@@ -263,7 +263,7 @@ func parseEnabledIntegrations(reader io.Reader) (enabledIntegrations, error) {
 	return integs, nil
 }
 
-func writeReqsFile(reqs dependencies, integs integrations, enabledIntegs enabledIntegrations) error {
+func writeReqsFile(reqs dependencies, integs integrations, enabledIntegs selectedIntegrations) error {
 	f, err := os.OpenFile(*outputReqsFile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to create output requirements file %q", *outputReqsFile)
@@ -283,8 +283,8 @@ func writeConstraintsFile(constraints dependencies) error {
 	return outputConstraints(f, constraints)
 }
 
-func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledIntegs enabledIntegrations) error {
-	notFoundIntegs := make(enabledIntegrations)
+func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledIntegs selectedIntegrations) error {
+	notFoundIntegs := make(selectedIntegrations)
 	for c := range enabledIntegs {
 		notFoundIntegs[c] = true
 	}

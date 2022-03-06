@@ -2,13 +2,13 @@ package main
 
 type dependencies []string
 
-type enabledIntegrations map[string]bool
+type selectedIntegrations map[string]bool
 
 type integrations map[string]dependencies
 
-func (e enabledIntegrations) names() []string {
+func (s selectedIntegrations) names() []string {
 	var res []string
-	for c := range e {
+	for c := range s {
 		res = append(res, c)
 	}
 	return res
