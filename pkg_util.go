@@ -22,7 +22,6 @@ import (
 
 const (
 	pkgConstraintInclude  = "-c homeassistant/package_constraints.txt"
-	integsHeader          = "# Home Assistant Core, full dependency set"
 	integsReqsInclude     = "-r requirements.txt"
 	componentPrefix       = "components."
 	integPrefix           = "# homeassistant."
@@ -138,18 +137,24 @@ func parseConstraintsOrReqsFile(url string, firstLineWithConstraint bool) (depen
 
 func parseConstraintsOrReqs(reader io.Reader, firstLineWithConstraint bool) (dependencies, error) {
 	s := bufio.NewScanner(reader)
-	if !s.Scan() {
-		return nil, s.Err()
+	line := ""
+	for {
+		if !s.Scan() {
+			return nil, s.Err()
+		}
+		if l, ok := parseLine(s); ok {
+			line = l
+			break
+		}
 	}
-	if firstLineWithConstraint && s.Text() != pkgConstraintInclude {
-		return nil, fmt.Errorf("First line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
+	if firstLineWithConstraint && line != pkgConstraintInclude {
+		return nil, fmt.Errorf("First line must contain %q, found %q instead", pkgConstraintInclude, line)
 	}
 
 	var deps dependencies
 	for s.Scan() {
-		line := strings.TrimSpace(s.Text())
-		if line != "" && !strings.HasPrefix(line, "#") {
-			deps = append(deps, line)
+		if l, ok := parseLine(s); ok {
+			deps = append(deps, l)
 		}
 	}
 
@@ -173,18 +178,18 @@ func parseIntegrationsFile(url string) (integrations, error) {
 
 func parseIntegrations(reader io.Reader) (integrations, error) {
 	s := bufio.NewScanner(reader)
-	if !s.Scan() {
-		return nil, s.Err()
+	line := ""
+	for {
+		if !s.Scan() {
+			return nil, s.Err()
+		}
+		if l, ok := parseLine(s); ok {
+			line = l
+			break
+		}
 	}
-	if s.Text() != integsHeader {
-		return nil, fmt.Errorf("First line must contain %q, found %q instead", integsHeader, s.Text())
-	}
-
-	if !s.Scan() {
-		return nil, s.Err()
-	}
-	if s.Text() != integsReqsInclude {
-		return nil, fmt.Errorf("Second line must contain %q, found %q instead", pkgConstraintInclude, s.Text())
+	if line != integsReqsInclude {
+		return nil, fmt.Errorf("Beginning of the file must contain %q, found %q instead", pkgConstraintInclude, line)
 	}
 
 	var integNames []string
@@ -222,6 +227,14 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 	}
 
 	return integs, nil
+}
+
+func parseLine(s *bufio.Scanner) (string, bool) {
+	line := strings.TrimSpace(s.Text())
+	if line != "" && !strings.HasPrefix(line, "#") {
+		return line, true
+	}
+	return "", false
 }
 
 func validateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrations, disabledIntegs selectedIntegrations) error {
