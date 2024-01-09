@@ -189,7 +189,7 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 		}
 	}
 	if line != integsReqsInclude {
-		return nil, fmt.Errorf("Beginning of the file must contain %q, found %q instead", pkgConstraintInclude, line)
+		return nil, fmt.Errorf("Beginning of the file must contain %q, found %q instead", integsReqsInclude, line)
 	}
 
 	var integNames []string
