@@ -41,6 +41,21 @@ func buildLogger() zzzlogi.Logger {
 }
 
 func run() int {
+	if *generateMode && *updateMode {
+		log.Errorf("Both -mode-generate and -mode-update cannot be set")
+		return -1
+	}
+	if !*generateMode && !*updateMode {
+		log.Errorf("At least one of -mode-generate or -mode-update must be set")
+		return -1
+	}
+	var mode execMode
+	if *generateMode {
+		mode = modeGenerate
+	} else if *updateMode {
+		mode = modeUpdate
+	}
+
 	if *haVersion == "" {
 		log.Errorf("-ha-version cannot be empty")
 		return -1
@@ -49,13 +64,19 @@ func run() int {
 		log.Errorf("-enabled-integrations cannot be empty")
 		return -1
 	}
-	if *outputReqsFile == "" {
-		log.Errorf("-output-requirements cannot be empty")
+	if *disabledIntegsFile == "" {
+		log.Errorf("-disabled-integrations cannot be empty")
 		return -1
 	}
-	if *outputConstraintsFile == "" {
-		log.Errorf("-output-constraints cannot be empty")
-		return -1
+	if mode == modeGenerate {
+		if *outputReqsFile == "" {
+			log.Errorf("-output-requirements cannot be empty in generate mode")
+			return -1
+		}
+		if *outputConstraintsFile == "" {
+			log.Errorf("-output-constraints cannot be empty in generate mode")
+			return -1
+		}
 	}
 
 	coreConstraintsURL := fmt.Sprintf(coreConstraintsURLFmt, *haVersion)
@@ -86,6 +107,11 @@ func run() int {
 	log.Debugf("Integ Reqs: %v", integs)
 	log.Infof("Unique Integrations: %d", len(integs))
 
+	if mode == modeUpdate {
+		log.Infof("\n\n")
+		log.Infof("Before updating enabled/disabled integrations")
+	}
+
 	enabledIntegs, err := parseSelectedIntegsFile(*enabledIntegsFile)
 	if err != nil {
 		log.Errorf("Parsing enabled integrations failed, reason: %v", err)
@@ -94,32 +120,66 @@ func run() int {
 	log.Debugf("Enabled integrations: %v", enabledIntegs)
 	log.Infof("Unique enabled integrations: %d", len(enabledIntegs))
 
-	var disabledIntegs selectedIntegrations
-	if *disabledIntegsFile != "" {
-		var err error
-		disabledIntegs, err = parseSelectedIntegsFile(*disabledIntegsFile)
+	disabledIntegs, err := parseSelectedIntegsFile(*disabledIntegsFile)
+	if err != nil {
+		log.Errorf("Parsing disabled integrations failed, reason: %v", err)
+		return -1
+	}
+	log.Debugf("Disabled integrations: %v", disabledIntegs)
+	log.Infof("Unique disabled integrations: %d", len(disabledIntegs))
+
+	if mode == modeGenerate {
+		err = validateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
 		if err != nil {
-			log.Errorf("Parsing disabled integrations failed, reason: %v", err)
+			log.Errorf("Enabled/Disabled integrations validation failed, reason: %v", err)
 			return -1
 		}
+
+		err = writeConstraintsFile(constraints)
+		if err != nil {
+			log.Errorf("Failed to output constraints, reason: %v", err)
+			return -1
+		}
+
+		err = writeReqsFile(reqs, integs, enabledIntegs)
+		if err != nil {
+			log.Errorf("Failed to output requirements, reason: %v", err)
+			return -1
+		}
+	} else if mode == modeUpdate {
+		err = updateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
+		if err != nil {
+			log.Errorf("Unable to update Enabled/Disabled integrations, reason: %v", err)
+			return -1
+		}
+
+		// Validate the updated set of enabled and disabled integrations.
+		err = validateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
+		if err != nil {
+			log.Errorf("Enabled/Disabled integrations validation after update failed, reason: %v", err)
+			return -1
+		}
+
+		log.Infof("\n\n")
+		log.Infof("After updating enabled/disabled integrations")
+		log.Debugf("Enabled integrations: %v", enabledIntegs)
+		log.Infof("Unique enabled integrations: %d", len(enabledIntegs))
 		log.Debugf("Disabled integrations: %v", disabledIntegs)
 		log.Infof("Unique disabled integrations: %d", len(disabledIntegs))
-	}
-	err = validateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
-	if err != nil {
-		log.Errorf("Enabled/Disabled integrations validation failed, reason: %v", err)
-		return -1
-	}
 
-	err = writeConstraintsFile(constraints)
-	if err != nil {
-		log.Errorf("Failed to output constraints, reason: %v", err)
-		return -1
-	}
+		err = writeSelectedIntegsFile(enabledIntegs, *enabledIntegsFile)
+		if err != nil {
+			log.Errorf("Failed to write updated enabled integrations file, reason: %v", err)
+			return -1
+		}
 
-	err = writeReqsFile(reqs, integs, enabledIntegs)
-	if err != nil {
-		log.Errorf("Failed to output requirements, reason: %v", err)
+		err = writeSelectedIntegsFile(disabledIntegs, *disabledIntegsFile)
+		if err != nil {
+			log.Errorf("Failed to write updated disabled integrations file, reason: %v", err)
+			return -1
+		}
+	} else {
+		log.Errorf("Something went wrong, since both generate mode and update mode flags are false")
 		return -1
 	}
 
@@ -299,6 +359,71 @@ func validateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrati
 	return nil
 }
 
+func updateSelectedIntegs(integs integrations, enabledIntegs selectedIntegrations, disabledIntegs selectedIntegrations) error {
+	var invalidEnabledIntegs []string
+	for e := range enabledIntegs {
+		if _, ok := integs[e]; !ok {
+			invalidEnabledIntegs = append(invalidEnabledIntegs, e)
+		}
+	}
+	sort.Strings(invalidEnabledIntegs)
+
+	var invalidDisabledIntegs []string
+	var commonIntegs []string
+	var notFoundInSel []string
+
+	if len(disabledIntegs) != 0 {
+		fullSel := make(selectedIntegrations)
+		for e := range enabledIntegs {
+			fullSel[e] = true
+		}
+		for d := range disabledIntegs {
+			if fullSel[d] {
+				commonIntegs = append(commonIntegs, d)
+			}
+			if _, ok := integs[d]; !ok {
+				invalidDisabledIntegs = append(invalidDisabledIntegs, d)
+			}
+			fullSel[d] = true
+		}
+
+		for i := range integs {
+			if !fullSel[i] {
+				notFoundInSel = append(notFoundInSel, i)
+			}
+		}
+
+		// Verify there is no overlap between enabled and disabled integrations lists.
+		if len(commonIntegs) > 0 {
+			sort.Strings(commonIntegs)
+			return fmt.Errorf("integrations %v are specified in both enabled and disabled integrations lists", commonIntegs)
+		}
+	}
+
+	sort.Strings(invalidDisabledIntegs)
+	sort.Strings(commonIntegs)
+	sort.Strings(notFoundInSel)
+
+	// Remove invalidEnabledIntegs from enabledIntegs
+	for _, i := range invalidEnabledIntegs {
+		delete(enabledIntegs, i)
+	}
+	// Remove invalidDisabledIntegs from disabledIntegs
+	for _, i := range invalidDisabledIntegs {
+		delete(disabledIntegs, i)
+	}
+	// Add notFoundInSel to disabledIntegs
+	for _, i := range notFoundInSel {
+		disabledIntegs[i] = true
+	}
+
+	log.Infof("UPDATE: Removed from enabled integrations: %v", invalidEnabledIntegs)
+	log.Infof("UPDATE: Removed from disabled integrations: %v", invalidDisabledIntegs)
+	log.Infof("UPDATE: Added to disabled integrations: %v", notFoundInSel)
+
+	return nil
+}
+
 func downloadFile(url string) (string, error) {
 	c := &http.Client{
 		Timeout: 10 * time.Second,
@@ -375,6 +500,28 @@ func writeConstraintsFile(constraints dependencies) error {
 	return outputConstraints(f, constraints)
 }
 
+func writeSelectedIntegsFile(integs selectedIntegrations, outputPath string) error {
+	f, err := os.OpenFile(outputPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to create output file %q for storing the updated integrations", outputPath)
+	}
+	defer f.Close()
+
+	integNames := make([]string, 0)
+	for i := range integs {
+		integNames = append(integNames, strings.TrimPrefix(i, componentPrefix))
+	}
+	sort.Strings(integNames)
+
+	count, err := outputRows(f, integNames, "integration")
+	if err != nil {
+		return err
+	}
+
+	log.Infof("Updated integrations file %q, wrote %d bytes", outputPath, count)
+	return nil
+}
+
 func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enabledIntegs selectedIntegrations) error {
 	haDep := fmt.Sprintf("homeassistant==%s", *haVersion)
 	deps := append(reqs, haDep)
@@ -385,7 +532,7 @@ func outputReqs(writer io.Writer, reqs dependencies, integs integrations, enable
 	}
 	sort.Strings(deps)
 
-	count, err := outputDeps(writer, deps)
+	count, err := outputRows(writer, deps, "dependency")
 	if err != nil {
 		return err
 	}
@@ -398,7 +545,7 @@ func outputConstraints(writer io.Writer, constraints dependencies) error {
 	deps := append(constraints, haDep)
 	sort.Strings(deps)
 
-	count, err := outputDeps(writer, constraints)
+	count, err := outputRows(writer, constraints, "dependency")
 	if err != nil {
 		return err
 	}
@@ -407,20 +554,20 @@ func outputConstraints(writer io.Writer, constraints dependencies) error {
 	return nil
 }
 
-func outputDeps(writer io.Writer, deps dependencies) (int, error) {
+func outputRows(writer io.Writer, rows []string, rowType string) (int, error) {
 	count := 0
 	w := bufio.NewWriter(writer)
 	defer w.Flush()
 
-	for _, dep := range deps {
+	for _, dep := range rows {
 		n, err := w.WriteString(dep)
 		if err != nil {
-			return 0, fmt.Errorf("failed to write dependency to file, reason: %v", err)
+			return 0, fmt.Errorf("failed to write %s to file, reason: %v", rowType, err)
 		}
 		count += n
 		n, err = w.WriteString("\n")
 		if err != nil {
-			return 0, fmt.Errorf("failed to write dependency to file, reason: %v", err)
+			return 0, fmt.Errorf("failed to write %s to file, reason: %v", rowType, err)
 		}
 		count += n
 	}
