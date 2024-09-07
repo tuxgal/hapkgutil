@@ -1,4 +1,6 @@
 .makesystem
 coverage.out
 dist/
+inputs/
+outputs/
 hasspkgutil
