@@ -1,4 +1,4 @@
-// Command hasspkgutil parses the specified dependencies of the home assistant
+// Command hapkgutil parses the specified dependencies of the home assistant
 // core package and the home assistant integrations, applies the specified
 // allowed and denied integration component lists to generate pip compatible
 // requirements and constraints files that can be used to download, install
@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tuxdude/zzzlog"
-	"github.com/tuxdude/zzzlogi"
+	"github.com/tuxgal/tuxlog"
+	"github.com/tuxgal/tuxlogi"
 )
 
 const (
@@ -34,10 +34,10 @@ var (
 	log = buildLogger()
 )
 
-func buildLogger() zzzlogi.Logger {
-	config := zzzlog.NewConsoleLoggerConfig()
-	config.MaxLevel = zzzlog.LvlInfo
-	return zzzlog.NewLogger(config)
+func buildLogger() tuxlogi.Logger {
+	config := tuxlog.NewConsoleLoggerConfig()
+	config.MaxLevel = tuxlog.LvlInfo
+	return tuxlog.NewLogger(config)
 }
 
 func run() int {

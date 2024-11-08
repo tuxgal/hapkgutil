@@ -3,4 +3,4 @@ coverage.out
 dist/
 inputs/
 outputs/
-hasspkgutil
+hapkgutil

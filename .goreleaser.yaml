@@ -68,7 +68,7 @@ signs:
     cmd: gpg
     args:
       - "-u"
-      - "8D458AC08D2CE9CE"
+      - "1856E0777ADFF1E9"
       - "--output"
       - "${signature}"
       - "--detach-sign"
