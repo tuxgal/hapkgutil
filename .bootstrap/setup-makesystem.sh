@@ -28,7 +28,7 @@ else
 fi
 
 rm -rf "${makesystem_dir:?}"
-git clone --quiet --depth 1 --branch v${ver:?} https://github.com/Tuxdude/makesystem.git ${makesystem_dir:?} >/dev/null 2>&1
+git clone --quiet --depth 1 --branch v${ver:?} https://github.com/tuxgal/makesystem ${makesystem_dir:?} >/dev/null 2>&1
 rm -rf ${makesystem_dir:?}/.git
 
 ${makesystem_dir:?}/scripts/post-install.sh
