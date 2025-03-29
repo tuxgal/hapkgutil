@@ -128,7 +128,8 @@ func run() int {
 	log.Debugf("Disabled integrations: %v", disabledIntegs)
 	log.Infof("Unique disabled integrations: %d", len(disabledIntegs))
 
-	if mode == modeGenerate {
+	switch mode {
+	case modeGenerate:
 		err = validateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
 		if err != nil {
 			log.Errorf("Enabled/Disabled integrations validation failed, reason: %v", err)
@@ -146,7 +147,7 @@ func run() int {
 			log.Errorf("Failed to output requirements, reason: %v", err)
 			return -1
 		}
-	} else if mode == modeUpdate {
+	case modeUpdate:
 		err = updateSelectedIntegs(integs, enabledIntegs, disabledIntegs)
 		if err != nil {
 			log.Errorf("Unable to update Enabled/Disabled integrations, reason: %v", err)
@@ -178,7 +179,7 @@ func run() int {
 			log.Errorf("Failed to write updated disabled integrations file, reason: %v", err)
 			return -1
 		}
-	} else {
+	default:
 		log.Errorf("Something went wrong, since both generate mode and update mode flags are false")
 		return -1
 	}
@@ -208,7 +209,7 @@ func parseConstraintsOrReqs(reader io.Reader, firstLineWithConstraint bool) (dep
 		}
 	}
 	if firstLineWithConstraint && line != pkgConstraintInclude {
-		return nil, fmt.Errorf("First line must contain %q, found %q instead", pkgConstraintInclude, line)
+		return nil, fmt.Errorf("first line must contain %q, found %q instead", pkgConstraintInclude, line)
 	}
 
 	var deps dependencies
@@ -249,7 +250,7 @@ func parseIntegrations(reader io.Reader) (integrations, error) {
 		}
 	}
 	if line != integsReqsInclude {
-		return nil, fmt.Errorf("Beginning of the file must contain %q, found %q instead", integsReqsInclude, line)
+		return nil, fmt.Errorf("beginning of the file must contain %q, found %q instead", integsReqsInclude, line)
 	}
 
 	var integNames []string
@@ -433,6 +434,7 @@ func downloadFile(url string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to download from URL: %q, reason: %v", url, err)
 	}
+	//nolint:errcheck
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -452,6 +454,7 @@ func parseSelectedIntegsFile(file string) (selectedIntegrations, error) {
 	if err != nil {
 		return nil, err
 	}
+	//nolint:errcheck
 	defer f.Close()
 
 	return parseSelectedIntegs(f)
@@ -485,6 +488,7 @@ func writeReqsFile(reqs dependencies, integs integrations, enabledIntegs selecte
 	if err != nil {
 		return fmt.Errorf("failed to create output requirements file %q", *outputReqsFile)
 	}
+	//nolint:errcheck
 	defer f.Close()
 
 	return outputReqs(f, reqs, integs, enabledIntegs)
@@ -495,6 +499,7 @@ func writeConstraintsFile(constraints dependencies) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output constraints file %q", *outputReqsFile)
 	}
+	//nolint:errcheck
 	defer f.Close()
 
 	return outputConstraints(f, constraints)
@@ -505,6 +510,7 @@ func writeSelectedIntegsFile(integs selectedIntegrations, outputPath string) err
 	if err != nil {
 		return fmt.Errorf("failed to create output file %q for storing the updated integrations", outputPath)
 	}
+	//nolint:errcheck
 	defer f.Close()
 
 	integNames := make([]string, 0)
@@ -557,6 +563,7 @@ func outputConstraints(writer io.Writer, constraints dependencies) error {
 func outputRows(writer io.Writer, rows []string, rowType string) (int, error) {
 	count := 0
 	w := bufio.NewWriter(writer)
+	//nolint:errcheck
 	defer w.Flush()
 
 	for _, dep := range rows {
